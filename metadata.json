@@ -1,0 +1,5 @@
+{
+  "name": "Interactive Site Layout Planner",
+  "description": "A web application to visualize and manage property layouts, such as building sites or flats. Users can view plots, check their status (Available, Booked, Sold), and administrators can edit plot details. The layout is interactive, supporting zoom and pan functionalities.",
+  "requestFramePermissions": []
+}
