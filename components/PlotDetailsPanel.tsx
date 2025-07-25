@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Layout, Status, Role } from '../types';
+import { Layout, Status, Role, SvgOverlay } from '../types';
 import { STATUS_COLORS } from '../constants';
 import { CloseIcon, EditIcon, InfoIcon, ListIcon, SubdivideIcon, TagIcon, TrashIcon, UserIcon } from './icons';
 
@@ -13,9 +13,22 @@ interface PlotDetailsPanelProps {
   onEnterEditor?: () => void;
   layouts?: Layout[];
   onLayoutSelect?: (layout: Layout) => void;
+  onAddSvgOverlay?: (overlay: SvgOverlay) => void;
+  mapCenter?: { lat: number; lng: number };
 }
 
-const PlotDetailsPanel: React.FC<PlotDetailsPanelProps> = ({ layout, onUpdate, onDelete, onClose, role, onEnterEditor, layouts, onLayoutSelect }) => {
+const PlotDetailsPanel: React.FC<PlotDetailsPanelProps> = ({
+  layout,
+  onUpdate,
+  onDelete,
+  onClose,
+  role,
+  onEnterEditor,
+  layouts,
+  onLayoutSelect,
+  onAddSvgOverlay,
+  mapCenter,
+}: PlotDetailsPanelProps) => {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [formData, setFormData] = useState<Omit<Layout, 'id' | 'latlngs' | 'plots'>>({
@@ -23,6 +36,11 @@ const PlotDetailsPanel: React.FC<PlotDetailsPanelProps> = ({ layout, onUpdate, o
     vendorName: '',
     status: Status.Available,
   });
+
+  // SVG upload state
+  const [svgFile, setSvgFile] = useState<File | null>(null);
+  const [svgPreview, setSvgPreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (layout) {
@@ -68,6 +86,44 @@ const PlotDetailsPanel: React.FC<PlotDetailsPanelProps> = ({ layout, onUpdate, o
   
   const statusColorClass = layout ? STATUS_COLORS[layout.status].replace('fill-', 'bg-') : '';
 
+  const handleSvgFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null);
+    const file = e.target.files?.[0] || null;
+    setSvgFile(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        if (text && text.includes('<svg')) {
+          setSvgPreview(text);
+        } else {
+          setSvgPreview(null);
+          setUploadError('File is not a valid SVG.');
+        }
+      };
+      reader.readAsText(file);
+    } else {
+      setSvgPreview(null);
+    }
+  };
+
+  const handleUploadSvgToMap = () => {
+    if (svgPreview && onAddSvgOverlay) {
+      // Use the current map center for the initial position
+      const defaultPosition = mapCenter || { lat: 20.5937, lng: 78.9629 };
+      onAddSvgOverlay({
+        id: `svg-${Date.now()}`,
+        svgContent: svgPreview,
+        position: defaultPosition,
+        scale: 1,
+        rotation: 0,
+      });
+      setSvgFile(null);
+      setSvgPreview(null);
+      setUploadError(null);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {role === Role.Admin && (
@@ -75,6 +131,24 @@ const PlotDetailsPanel: React.FC<PlotDetailsPanelProps> = ({ layout, onUpdate, o
           <div className="flex items-center space-x-3 mb-4">
             <ListIcon className="w-6 h-6 text-slate-500 dark:text-slate-400" />
             <h2 className="text-xl font-bold">All Layouts</h2>
+          </div>
+          {/* SVG Upload Section */}
+          <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
+            <label className="block text-sm font-medium mb-2">Upload SVG to Map</label>
+            <input type="file" accept=".svg" onChange={handleSvgFileChange} className="mb-2" />
+            {svgPreview && (
+              <div className="mb-2 border rounded bg-white dark:bg-slate-800 p-2 max-h-32 overflow-auto">
+                <div dangerouslySetInnerHTML={{ __html: svgPreview }} style={{ maxWidth: '100%', maxHeight: '100px' }} />
+              </div>
+            )}
+            {uploadError && <div className="text-red-500 text-xs mb-2">{uploadError}</div>}
+            <button
+              className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:bg-blue-300 disabled:cursor-not-allowed"
+              disabled={!svgPreview}
+              onClick={handleUploadSvgToMap}
+            >
+              Add SVG to Map
+            </button>
           </div>
           <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
             {layouts && layouts.length > 0 ? (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Layout, Role, Status, ToastType } from '../types';
+import { Layout, Role, Status, ToastType, SvgOverlay } from '../types';
 import { INITIAL_LAYOUTS } from '../constants';
 import Header from './Header';
 import MapLayout from './MapLayout';
@@ -7,7 +7,7 @@ import PlotDetailsPanel from './PlotDetailsPanel';
 import LayoutEditor from './LayoutEditor';
 import { CheckCircleIcon } from './icons';
 
-const Toast: React.FC<{ message: string; type: ToastType; onDismiss: () => void; }> = ({ message, type, onDismiss }) => {
+const Toast: React.FC<{ message: string; type: ToastType; onDismiss: () => void; }> = ({ message, type, onDismiss }: { message: string; type: ToastType; onDismiss: () => void; }) => {
   useEffect(() => {
     const timer = setTimeout(onDismiss, 3000);
     return () => clearTimeout(timer);
@@ -35,7 +35,9 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
   const [selectedLayout, setSelectedLayout] = useState<Layout | null>(null);
   const [editingLayout, setEditingLayout] = useState<Layout | null>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
-  const [flyToTrigger, setFlyToTrigger] = useState(0);
+  const [flyToTrigger, setFlyToTrigger] = useState<number>(0);
+  const [svgOverlays, setSvgOverlays] = useState<SvgOverlay[]>([]);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 20.5937, lng: 78.9629 });
 
   const showToast = (message: string, type: ToastType = 'success') => {
     setToast({ message, type });
@@ -67,12 +69,11 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
 
   const handleLayoutSelect = (layout: Layout) => {
     setSelectedLayout(layout);
-    // This makes the map fly to the layout every time it's clicked in the list.
-    setFlyToTrigger(t => t + 1);
+    setFlyToTrigger((t: number) => t + 1);
   };
 
   const handleLayoutUpdate = (updatedLayout: Layout) => {
-    const newLayouts = layouts.map(p => p.id === updatedLayout.id ? updatedLayout : p);
+    const newLayouts = layouts.map((p: Layout) => p.id === updatedLayout.id ? updatedLayout : p);
     setLayouts(newLayouts);
     setSelectedLayout(updatedLayout);
     showToast('Layout updated successfully!');
@@ -80,7 +81,7 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
 
   const handleLayoutDelete = (layoutId: number) => {
     if (window.confirm('Are you sure you want to delete this layout? This action cannot be undone.')) {
-      const newLayouts = layouts.filter(l => l.id !== layoutId);
+      const newLayouts = layouts.filter((l: Layout) => l.id !== layoutId);
       setLayouts(newLayouts);
       if (selectedLayout?.id === layoutId) {
         setSelectedLayout(null);
@@ -94,7 +95,7 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
   }
 
   const handleDrawingFinish = (latlngs: L.LatLngExpression[]) => {
-    const newId = layouts.length > 0 ? Math.max(...layouts.map(l => l.id)) + 1 : 1;
+    const newId = layouts.length > 0 ? Math.max(...layouts.map((l: Layout) => l.id)) + 1 : 1;
     const newLayout: Layout = {
       id: newId,
       name: `New Layout ${newId}`,
@@ -103,7 +104,7 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
       latlngs: latlngs,
       plots: [],
     };
-    setLayouts(prev => [...prev, newLayout]);
+    setLayouts((prev: Layout[]) => [...prev, newLayout]);
     setSelectedLayout(newLayout);
     showToast('New layout created successfully!');
   };
@@ -120,9 +121,18 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
   };
 
   const handleSaveChangesFromEditor = (updatedLayout: Layout) => {
-    setLayouts(prevLayouts => prevLayouts.map(l => l.id === updatedLayout.id ? updatedLayout : l));
+    setLayouts((prevLayouts: Layout[]) => prevLayouts.map((l: Layout) => l.id === updatedLayout.id ? updatedLayout : l));
     setEditingLayout(null); // Exit editor on save
     showToast('Layout saved successfully!');
+  };
+
+  // Handler to add a new SVG overlay
+  const handleAddSvgOverlay = (overlay: SvgOverlay) => {
+    setSvgOverlays((prev: SvgOverlay[]) => [...prev, overlay]);
+  };
+  // Handler to update an existing SVG overlay (for move/resize/rotate)
+  const handleUpdateSvgOverlay = (updated: SvgOverlay) => {
+    setSvgOverlays((prev: SvgOverlay[]) => prev.map((o: SvgOverlay) => o.id === updated.id ? updated : o));
   };
 
   if (role === Role.Admin && editingLayout) {
@@ -151,6 +161,9 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
               onDrawingFinish={handleDrawingFinish}
               isAdmin={role === Role.Admin}
               flyToTrigger={flyToTrigger}
+              svgOverlays={svgOverlays}
+              onUpdateSvgOverlay={handleUpdateSvgOverlay}
+              onMapCenterChange={setMapCenter}
             />
           </div>
           <aside className="w-96 flex-shrink-0 bg-white dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700/50">
@@ -163,6 +176,8 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
               layouts={layouts}
               onLayoutSelect={handleLayoutSelect}
               onDelete={handleLayoutDelete}
+              onAddSvgOverlay={handleAddSvgOverlay}
+              mapCenter={mapCenter}
             />
           </aside>
         </main>

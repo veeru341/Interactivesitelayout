@@ -177,3 +177,12 @@ export interface Layout {
 }
 
 export type ToastType = 'success' | 'error' | 'info';
+
+export interface SvgOverlay {
+  id: string;
+  svgContent: string; // The raw SVG XML string
+  position: L.LatLngExpression; // Center position on the map
+  scale: number; // Scale factor for resizing
+  rotation: number; // Rotation in degrees
+  initialZoom?: number; // The map zoom at which the overlay was fixed
+}
