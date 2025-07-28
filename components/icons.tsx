@@ -139,3 +139,40 @@ export const LogoutIcon: React.FC<IconProps> = (props) => (
     <line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 );
+
+export const SquareIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+    <rect x="3" y="3" width="14" height="14" rx="2" ry="2" />
+  </svg>
+);
+
+export const RectangleIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+    <rect x="3" y="6" width="14" height="8" rx="1" ry="1" />
+  </svg>
+);
+
+export const RoadIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+    <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+  </svg>
+);
+
+export const TreeIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+    <path d="M10 2L6 8h2v8h4V8h2L10 2z" />
+    <path d="M8 16h4v2H8v-2z" />
+  </svg>
+);
+
+export const SaveIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+    <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h-1v5.586l-2.293-2.293z" />
+  </svg>
+);
+
+export const ClearIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+  </svg>
+);

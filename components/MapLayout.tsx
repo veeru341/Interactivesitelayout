@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Layout, SvgOverlay } from '../types';
+import { Layout, ImageOverlay } from '../types';
 import { MAP_CENTER, MAP_ZOOM, STATUS_HEX_COLORS } from '../constants';
 import { PencilIcon } from './icons';
 
@@ -11,9 +11,10 @@ interface MapLayoutProps {
   onDrawingFinish: (latlngs: L.LatLngExpression[]) => void;
   isAdmin: boolean;
   flyToTrigger: number;
-  svgOverlays?: SvgOverlay[];
-  onUpdateSvgOverlay?: (overlay: SvgOverlay) => void;
+  svgOverlays?: ImageOverlay[];
+  onUpdateSvgOverlay?: (overlay: ImageOverlay) => void;
   onMapCenterChange?: (center: L.LatLngExpression) => void;
+  onFixedOverlayChange?: (overlay: { id: string; imageUrl?: string; svgContent?: string; position: L.LatLngExpression } | null) => void;
 }
 
 const MapLayout: React.FC<MapLayoutProps> = ({
@@ -27,6 +28,7 @@ const MapLayout: React.FC<MapLayoutProps> = ({
   svgOverlays = [],
   onUpdateSvgOverlay,
   onMapCenterChange,
+  onFixedOverlayChange,
 }: MapLayoutProps) => {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<L.Map | null>(null);
@@ -281,6 +283,17 @@ const MapLayout: React.FC<MapLayoutProps> = ({
   // When fixing an overlay, only set it as fixed
   const handleFixOverlay = (id: string) => {
     setFixedOverlays(prev => new Set(prev).add(id));
+    const overlay = svgOverlays.find(o => o.id === id);
+    if (overlay) {
+      const fixedOverlay = {
+        id: overlay.id,
+        imageUrl: overlay.imageUrl,
+        svgContent: overlay.svgContent,
+        position: overlay.position
+      };
+      setCurrentFixedOverlay(fixedOverlay);
+      onFixedOverlayChange?.(fixedOverlay);
+    }
   };
 
   const handleDrawClick = () => setIsDrawing(true);
@@ -311,6 +324,12 @@ const MapLayout: React.FC<MapLayoutProps> = ({
     };
   }, [map, onMapCenterChange]);
 
+  const [currentFixedOverlay, setCurrentFixedOverlay] = useState<{ id: string; imageUrl?: string; svgContent?: string; position: L.LatLngExpression } | null>(null);
+
+  useEffect(() => {
+    onFixedOverlayChange?.(currentFixedOverlay);
+  }, [currentFixedOverlay, onFixedOverlayChange]);
+
   return (
     <div className={`w-full h-full relative ${isDrawing ? 'cursor-crosshair' : ''}`}>
       <div ref={mapRef} className="w-full h-full" />
@@ -327,13 +346,17 @@ const MapLayout: React.FC<MapLayoutProps> = ({
               top: pt.y,
               transform: `translate(-50%, -50%) scale(${overlay.scale}) rotate(${overlay.rotation}deg)`,
               cursor: isAdmin && !isFixed ? (draggingId === overlay.id ? 'grabbing' : 'grab') : 'default',
-              zIndex: 500,
+              zIndex: 1000,
               pointerEvents: isAdmin && !isFixed ? 'auto' : 'none',
               userSelect: 'none',
             }}
             onMouseDown={isAdmin && !isFixed ? (e) => handleSvgMouseDown(e, overlay.id) : undefined}
           >
-            <div dangerouslySetInnerHTML={{ __html: overlay.svgContent }} style={{ pointerEvents: 'none' }} />
+            {overlay.svgContent ? (
+              <div dangerouslySetInnerHTML={{ __html: overlay.svgContent }} style={{ display: 'block', maxWidth: 300, maxHeight: 300, pointerEvents: 'none' }} />
+            ) : overlay.imageUrl ? (
+              <img src={overlay.imageUrl} alt="Overlay" style={{ display: 'block', maxWidth: 300, maxHeight: 300, pointerEvents: 'none' }} />
+            ) : null}
             {isAdmin && !isFixed && (
               <>
                 {/* Resize handle (bottom right) */}

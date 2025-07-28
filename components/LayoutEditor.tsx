@@ -1,349 +1,365 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Layout, Plot, Status } from '../types';
-import { BackIcon, EraserIcon, InfoIcon, PencilIcon, SelectIcon, TagIcon, EditIcon } from './icons';
-import { STATUS_HEX_COLORS } from '../constants';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { DrawingTool, DrawingPoint, Shape } from '../types';
+import { PencilIcon, SquareIcon, RectangleIcon, EraserIcon, RoadIcon, TreeIcon, SelectIcon } from './icons';
 
-interface LayoutEditorProps {
-  initialLayout: Layout;
-  onSaveChanges: (updatedLayout: Layout) => void;
-  onExit: () => void;
+interface CompactLayoutEditorProps {
+  backgroundImage?: string;
+  onSave?: (layoutData: { shapes: Shape[]; drawingPoints: DrawingPoint[] }) => void;
+  onClose: () => void;
 }
 
-type Tool = 'select' | 'draw' | 'erase';
+const CompactLayoutEditor: React.FC<CompactLayoutEditorProps> = ({ backgroundImage, onSave, onClose }) => {
+  const [currentTool, setCurrentTool] = useState<DrawingTool>(DrawingTool.Select);
+  const [drawingPoints, setDrawingPoints] = useState<DrawingPoint[]>([]);
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
 
-const generateUUID = () => `plot-${Date.now()}-${Math.random()}`;
+  const canvasRef = useRef<HTMLDivElement>(null);
 
-const LayoutEditor: React.FC<LayoutEditorProps> = ({ initialLayout, onSaveChanges, onExit }) => {
-  const [layout, setLayout] = useState<Layout>(initialLayout);
-  const [selectedPlot, setSelectedPlot] = useState<Plot | null>(null);
-  const [tool, setTool] = useState<Tool>('select');
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [isHoveringOverErasable, setIsHoveringOverErasable] = useState(false);
-  
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingPoints, setDrawingPoints] = useState<L.LatLng[]>([]);
+  const generateId = () => Math.random().toString(36).substr(2, 9);
 
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [map, setMap] = useState<L.Map | null>(null);
-  const plotsLayerGroup = useRef<L.LayerGroup | null>(null);
-  const drawingLayerGroup = useRef<L.LayerGroup | null>(null);
-
-  // Detect if there are any meaningful changes to save.
-  useEffect(() => {
-    const initialJSON = JSON.stringify(initialLayout.plots || []);
-    const currentJSON = JSON.stringify(layout.plots || []);
-    setHasChanges(initialJSON !== currentJSON);
-  }, [layout, initialLayout]);
-
-  const handleToolSelect = (selectedTool: Tool) => {
-    setTool(selectedTool);
-    setIsDrawing(selectedTool === 'draw');
-    if (selectedTool !== 'draw') {
-      setDrawingPoints([]);
-    }
-  };
-
-  // Effect to initialize the map
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    const mapInstance = L.map(mapRef.current, { zoomControl: false }).setView([0,0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(mapInstance);
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    if (!canvasRef.current) return;
     
-    // Add layer groups
-    plotsLayerGroup.current = L.layerGroup().addTo(mapInstance);
-    drawingLayerGroup.current = L.layerGroup().addTo(mapInstance);
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-    // Draw parent layout boundary
-    const parentBoundary = L.polygon(layout.latlngs, {
-      color: '#4f46e5',
-      weight: 3,
-      fill: false,
-      dashArray: '10, 5'
-    }).addTo(mapInstance);
-
-    mapInstance.fitBounds(parentBoundary.getBounds(), { padding: L.point(50, 50) });
-    setMap(mapInstance);
-
-    return () => mapInstance.remove();
-  }, [layout.latlngs]);
-  
-  // Effect to handle map clicks
-  useEffect(() => {
-    if (!map) return;
-
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
-      if (tool === 'draw' && isDrawing) {
-        setDrawingPoints(prev => [...prev, e.latlng]);
-      } else if(tool === 'select') {
-        setSelectedPlot(null); // Deselect plot
-      }
-    };
-    map.on('click', handleMapClick);
-
-    return () => { map.off('click', handleMapClick); };
-  }, [map, tool, isDrawing]);
-
-  // Effect to render sub-plots
-  useEffect(() => {
-    if (!plotsLayerGroup.current || !map) return;
-    plotsLayerGroup.current.clearLayers();
-    
-    (layout.plots || []).forEach(plot => {
-      const isSelected = plot.id === selectedPlot?.id;
-      const plotPolygon = L.polygon(plot.latlngs, {
-        color: isSelected ? '#2563eb' : '#1f2937',
-        weight: isSelected ? 3 : 1.5,
-        fillColor: STATUS_HEX_COLORS[plot.status],
-        fillOpacity: 0.65,
-      }).addTo(plotsLayerGroup.current!);
-
-      plotPolygon.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
-        if (tool === 'select') {
-          setSelectedPlot(plot);
-        } else if (tool === 'erase') {
-          setLayout(prev => ({
-            ...prev,
-            plots: prev.plots?.filter(p => p.id !== plot.id) || []
-          }));
-          setSelectedPlot(null);
-        }
-      });
+    switch (currentTool) {
+      case DrawingTool.Pencil:
+        const newPoint: DrawingPoint = { x, y, id: generateId() };
+        setDrawingPoints(prev => [...prev, newPoint]);
+        break;
       
-      // Add hover effect for erase tool
-      plotPolygon.on('mouseover', function(this: L.Polygon) {
-        if(tool === 'erase') {
-            this.setStyle({ fillColor: STATUS_HEX_COLORS.Sold, color: STATUS_HEX_COLORS.Sold });
-            setIsHoveringOverErasable(true);
-        }
-      });
-      plotPolygon.on('mouseout', function(this: L.Polygon) {
-        if(tool === 'erase') {
-            this.setStyle({ fillColor: STATUS_HEX_COLORS[plot.status], color: isSelected ? '#2563eb' : '#1f2937' });
-            setIsHoveringOverErasable(false);
-        }
-      });
-
-      // Add a permanent tooltip with the plot number
-      plotPolygon.bindTooltip(plot.plotNumber, {
-        permanent: true,
-        direction: 'center',
-        className: 'layout-label' // Use the same styling
-      }).openTooltip();
-    });
-  }, [layout.plots, selectedPlot, map, tool]);
-  
-  // Effect for drawing visuals
-  useEffect(() => {
-    if (!drawingLayerGroup.current) return;
-    drawingLayerGroup.current.clearLayers();
-
-    if (isDrawing && drawingPoints.length > 0) {
-      drawingPoints.forEach(p => L.circleMarker(p, { radius: 4, color: '#3b82f6', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(drawingLayerGroup.current!));
-      if (drawingPoints.length > 1) {
-        L.polygon(drawingPoints, { color: '#3b82f6', weight: 3, dashArray: '5, 5' }).addTo(drawingLayerGroup.current!);
-      }
+      case DrawingTool.Square:
+        const square: Shape = {
+          id: generateId(),
+          type: 'square',
+          x,
+          y,
+          width: 30,
+          height: 30,
+          rotation: 0,
+          color: '#6b7280',
+          isSelected: false
+        };
+        setShapes(prev => [...prev, square]);
+        break;
+      
+      case DrawingTool.Rectangle:
+        const rectangle: Shape = {
+          id: generateId(),
+          type: 'rectangle',
+          x,
+          y,
+          width: 50,
+          height: 25,
+          rotation: 0,
+          color: '#6b7280',
+          isSelected: false
+        };
+        setShapes(prev => [...prev, rectangle]);
+        break;
+      
+      case DrawingTool.Road:
+        const road: Shape = {
+          id: generateId(),
+          type: 'road',
+          x,
+          y,
+          width: 60,
+          height: 12,
+          rotation: 0,
+          color: '#374151',
+          isSelected: false
+        };
+        setShapes(prev => [...prev, road]);
+        break;
+      
+      case DrawingTool.Tree:
+        const tree: Shape = {
+          id: generateId(),
+          type: 'tree',
+          x,
+          y,
+          width: 20,
+          height: 25,
+          rotation: 0,
+          color: '#059669',
+          isSelected: false
+        };
+        setShapes(prev => [...prev, tree]);
+        break;
+      
+      case DrawingTool.Select:
+        const clickedShape = shapes.find(shape => 
+          x >= shape.x && x <= shape.x + shape.width &&
+          y >= shape.y && y <= shape.y + shape.height
+        );
+        setSelectedShapeId(clickedShape?.id || null);
+        setShapes(prev => prev.map(shape => ({
+          ...shape,
+          isSelected: shape.id === clickedShape?.id
+        })));
+        break;
     }
-  }, [drawingPoints, isDrawing]);
-
-  const handleFinishDrawing = () => {
-    if (drawingPoints.length < 3) return;
-    const newPlot: Plot = {
-      id: generateUUID(),
-      plotNumber: `Plot #${(layout.plots?.length || 0) + 1}`,
-      status: Status.Available,
-      latlngs: drawingPoints,
-    };
-    setLayout(prev => ({
-      ...prev,
-      plots: [...(prev.plots || []), newPlot]
-    }));
-    setDrawingPoints([]);
-    setIsDrawing(false);
-    setTool('select');
-    setSelectedPlot(newPlot);
-  };
-  
-  const handleUpdatePlot = (updatedPlot: Plot) => {
-    setLayout(prev => ({
-      ...prev,
-      plots: prev.plots?.map(p => p.id === updatedPlot.id ? updatedPlot : p) || []
-    }));
-    setSelectedPlot(updatedPlot);
   };
 
-  const handleSaveAndExit = async () => {
-    if (!hasChanges) return;
-    setIsSaving(true);
-    // Simulate network latency for better UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-    onSaveChanges(layout);
+  const handleMouseDown = (e: React.MouseEvent, shapeId: string) => {
+    if (currentTool !== DrawingTool.Select) return;
+    
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    setIsDragging(true);
+    setDragStart({ x, y });
+    setSelectedShapeId(shapeId);
   };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || !dragStart || !selectedShapeId || !canvasRef.current) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const deltaX = x - dragStart.x;
+    const deltaY = y - dragStart.y;
+    
+    setShapes(prev => prev.map(shape => 
+      shape.id === selectedShapeId 
+        ? { ...shape, x: shape.x + deltaX, y: shape.y + deltaY }
+        : shape
+    ));
+    
+    setDragStart({ x, y });
+  }, [isDragging, dragStart, selectedShapeId]);
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setDragStart(null);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove]);
+
+  const handleEraser = (shapeId: string) => {
+    setShapes(prev => prev.filter(shape => shape.id !== shapeId));
+    setSelectedShapeId(null);
+  };
+
+  const handleSave = () => {
+    if (onSave) {
+      onSave({ shapes, drawingPoints });
+    }
+  };
+
+  const renderShape = (shape: Shape) => {
+    const isSelected = shape.id === selectedShapeId;
+    
+    switch (shape.type) {
+      case 'square':
+      case 'rectangle':
+        return (
+          <div
+            key={shape.id}
+            style={{
+              position: 'absolute',
+              left: shape.x,
+              top: shape.y,
+              width: shape.width,
+              height: shape.height,
+              backgroundColor: shape.color,
+              border: isSelected ? '2px solid #3b82f6' : '1px solid #374151',
+              cursor: currentTool === DrawingTool.Select ? 'move' : 'default',
+              transform: `rotate(${shape.rotation}deg)`,
+            }}
+            onMouseDown={(e) => handleMouseDown(e, shape.id)}
+          />
+        );
+      
+      case 'road':
+        return (
+          <div
+            key={shape.id}
+            style={{
+              position: 'absolute',
+              left: shape.x,
+              top: shape.y,
+              width: shape.width,
+              height: shape.height,
+              backgroundColor: shape.color,
+              border: isSelected ? '2px solid #3b82f6' : '1px solid #1f2937',
+              cursor: currentTool === DrawingTool.Select ? 'move' : 'default',
+              transform: `rotate(${shape.rotation}deg)`,
+              backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 3px, #6b7280 3px, #6b7280 6px)',
+            }}
+            onMouseDown={(e) => handleMouseDown(e, shape.id)}
+          />
+        );
+      
+      case 'tree':
+        return (
+          <div
+            key={shape.id}
+            style={{
+              position: 'absolute',
+              left: shape.x,
+              top: shape.y,
+              width: shape.width,
+              height: shape.height,
+              cursor: currentTool === DrawingTool.Select ? 'move' : 'default',
+              transform: `rotate(${shape.rotation}deg)`,
+            }}
+            onMouseDown={(e) => handleMouseDown(e, shape.id)}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '60%',
+                backgroundColor: '#059669',
+                borderRadius: '50% 50% 0 0',
+                border: isSelected ? '2px solid #3b82f6' : 'none',
+              }}
+            />
+            <div
+              style={{
+                width: '20%',
+                height: '40%',
+                backgroundColor: '#92400e',
+                margin: '0 auto',
+                border: isSelected ? '2px solid #3b82f6' : 'none',
+              }}
+            />
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  const ToolButton = ({ tool, icon, label }: { tool: DrawingTool; icon: React.ReactNode; label: string }) => (
+    <button
+      onClick={() => setCurrentTool(tool)}
+      className={`flex items-center space-x-1 p-1 rounded text-xs ${
+        currentTool === tool 
+          ? 'bg-blue-600 text-white' 
+          : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+      }`}
+      title={label}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
 
   return (
-    <div className="flex flex-col h-screen font-sans bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
-      <header className="flex-shrink-0 bg-white dark:bg-slate-800/80 backdrop-blur-md shadow-md z-20 p-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
-        <div className="flex items-center space-x-4">
-          <button onClick={onExit} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-            <BackIcon className="w-6 h-6" />
-          </button>
-          <div>
-            <span className="text-sm text-slate-500">Editor</span>
-            <h1 className="text-xl font-bold">{layout.name}</h1>
+    <div className="space-y-3">
+      {/* Tools */}
+      <div className="grid grid-cols-3 gap-1">
+        <ToolButton tool={DrawingTool.Select} icon={<SelectIcon className="w-3 h-3" />} label="Select" />
+        <ToolButton tool={DrawingTool.Pencil} icon={<PencilIcon className="w-3 h-3" />} label="Pencil" />
+        <ToolButton tool={DrawingTool.Square} icon={<SquareIcon className="w-3 h-3" />} label="Square" />
+        <ToolButton tool={DrawingTool.Rectangle} icon={<RectangleIcon className="w-3 h-3" />} label="Rect" />
+        <ToolButton tool={DrawingTool.Road} icon={<RoadIcon className="w-3 h-3" />} label="Road" />
+        <ToolButton tool={DrawingTool.Tree} icon={<TreeIcon className="w-3 h-3" />} label="Tree" />
           </div>
-        </div>
-        <button
-          onClick={handleSaveAndExit}
-          disabled={isSaving || !hasChanges}
-          className={`
-            relative overflow-hidden text-white font-bold py-2 px-6 rounded-lg transition-all w-36 flex justify-center items-center transform
-            ${isSaving ? 'cursor-wait bg-blue-600' : ''}
-            ${!isSaving && hasChanges ? 'bg-blue-600 hover:bg-blue-700 active:scale-95' : ''}
-            ${!isSaving && !hasChanges ? 'bg-blue-300 dark:bg-blue-700/60 cursor-not-allowed' : ''}
-          `}
-        >
-          <span className={`${isSaving ? 'opacity-0' : 'opacity-100'}`}>
-            {hasChanges ? 'Save & Exit' : 'Up to date'}
-          </span>
-          {isSaving && (
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="block absolute w-full h-full bg-gradient-to-r from-transparent via-white/50 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></span>
-              <span className="opacity-75">Saving...</span>
-            </span>
-          )}
-        </button>
-      </header>
-      <main className="flex-grow flex overflow-hidden">
-        {/* Center Map Area */}
+
+      {/* Canvas */}
+      <div className="relative">
         <div
-          className={`flex-grow relative ${
-            tool === 'draw' ? 'cursor-crosshair' :
-            tool === 'select' ? 'cursor-move' :
-            (tool === 'erase' && isHoveringOverErasable) ? 'cursor-pointer' :
-            'cursor-default'
-          }`}
+          ref={canvasRef}
+          className="w-full h-32 bg-slate-300 dark:bg-slate-600 relative cursor-crosshair border border-slate-400"
+          onClick={handleCanvasClick}
+          style={{
+            backgroundImage: backgroundImage ? `url(${backgroundImage})` : undefined,
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+          }}
         >
-           {/* Floating Toolbar */}
-          <div className="absolute top-4 left-4 z-[1000] bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-2 rounded-xl shadow-lg flex flex-col space-y-2">
-            <ToolButton icon={<SelectIcon />} label="Select" active={tool === 'select'} onClick={() => handleToolSelect('select')} />
-            <ToolButton icon={<PencilIcon />} label="Draw" active={tool === 'draw'} onClick={() => handleToolSelect('draw')} />
-            <ToolButton icon={<EraserIcon />} label="Erase" active={tool === 'erase'} onClick={() => handleToolSelect('erase')} />
-          </div>
+          {/* Drawing Points */}
+          {drawingPoints.map((point) => (
+            <div
+              key={point.id}
+              style={{
+                position: 'absolute',
+                left: point.x - 2,
+                top: point.y - 2,
+                width: 4,
+                height: 4,
+                backgroundColor: '#3b82f6',
+                borderRadius: '50%',
+                border: '1px solid white',
+              }}
+            />
+          ))}
 
-          <div ref={mapRef} className="w-full h-full" />
-           {isDrawing && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-white dark:bg-slate-800 p-2 rounded-lg shadow-lg flex space-x-2">
-              <button 
-                onClick={handleFinishDrawing}
-                disabled={drawingPoints.length < 3}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 font-semibold disabled:bg-slate-400 disabled:cursor-not-allowed"
-              >
-                Finish Plot
-              </button>
-               <button 
-                onClick={() => { setIsDrawing(false); setDrawingPoints([]); setTool('select'); }}
-                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 font-semibold"
-              >
-                Cancel
+          {/* Drawing Lines */}
+          {drawingPoints.length > 1 && (
+            <svg
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+              }}
+            >
+              <polyline
+                points={drawingPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="1"
+              />
+            </svg>
+          )}
+
+          {/* Shapes */}
+          {shapes.map(renderShape)}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex space-x-2">
+        {selectedShapeId && (
+          <button
+            onClick={() => handleEraser(selectedShapeId)}
+            className="flex-1 bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700"
+          >
+            Delete
+          </button>
+        )}
+        <button
+          onClick={handleSave}
+          className="flex-1 bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700"
+        >
+          Save
+        </button>
+        <button
+          onClick={onClose}
+          className="flex-1 bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700"
+        >
+          Close
               </button>
             </div>
-          )}
-        </div>
-
-        {/* Right Details Panel */}
-        <div className="w-96 flex-shrink-0 bg-white dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700/50 overflow-y-auto">
-          {selectedPlot ? (
-            <PlotEditor key={selectedPlot.id} plot={selectedPlot} onUpdate={handleUpdatePlot} />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full p-6 text-center text-slate-500 dark:text-slate-400">
-                <InfoIcon className="w-16 h-16 mb-4 text-slate-400 dark:text-slate-500" />
-                <h3 className="text-lg font-semibold">No Plot Selected</h3>
-                <p className="text-sm">Use the 'Select' tool to click on a plot, or draw a new one.</p>
-            </div>
-          )}
-        </div>
-      </main>
     </div>
   );
 };
 
-const ToolButton: React.FC<{icon: React.ReactNode, label: string, active: boolean, onClick: () => void}> = ({ icon, label, active, onClick }) => (
-  <button onClick={onClick} title={label} className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg transition-colors duration-200 ${active ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
-    <div className="w-6 h-6">{icon}</div>
-    <span className="text-xs mt-1">{label}</span>
-  </button>
-);
-
-const PlotEditor: React.FC<{plot: Plot, onUpdate: (plot: Plot) => void}> = ({ plot, onUpdate }) => {
-  const [formData, setFormData] = useState({ plotNumber: plot.plotNumber, status: plot.status });
-
-  useEffect(() => {
-    setFormData({ plotNumber: plot.plotNumber, status: plot.status });
-  }, [plot]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, plotNumber: e.target.value }));
-  };
-  
-  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData(prev => ({ ...prev, status: e.target.value as Status }));
-  };
-
-  const handleSaveChanges = () => {
-    onUpdate({ ...plot, ...formData });
-  };
-  
-  useEffect(() => {
-    // Auto-save on change
-    const timeoutId = setTimeout(() => {
-        if(formData.plotNumber !== plot.plotNumber || formData.status !== plot.status) {
-            handleSaveChanges();
-        }
-    }, 500);
-    return () => clearTimeout(timeoutId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData]);
-
-  return (
-    <div className="p-6">
-      <h2 className="text-2xl font-bold mb-6">Plot Details</h2>
-       <div className="space-y-6">
-        <div className="flex items-start space-x-3">
-          <TagIcon className="w-6 h-6 mt-1 text-slate-400"/>
-          <div>
-            <label htmlFor="plotNumber" className="block text-sm font-medium text-slate-500 dark:text-slate-400">Plot Number</label>
-            <input
-              type="text"
-              id="plotNumber"
-              value={formData.plotNumber}
-              onChange={handleInputChange}
-              className="mt-1 block w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-            />
-          </div>
-        </div>
-        <div className="flex items-start space-x-3">
-          <EditIcon className="w-6 h-6 mt-1 text-slate-400"/>
-          <div>
-            <label htmlFor="status" className="block text-sm font-medium text-slate-500 dark:text-slate-400">Status</label>
-            <select
-              id="status"
-              value={formData.status}
-              onChange={handleStatusChange}
-              className="mt-1 block w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-            >
-              {Object.values(Status).map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default LayoutEditor;
+export default CompactLayoutEditor;

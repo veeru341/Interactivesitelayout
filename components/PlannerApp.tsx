@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Layout, Role, Status, ToastType, SvgOverlay } from '../types';
+import { Layout, Role, Status, ToastType, ImageOverlay, Shape, DrawingPoint } from '../types';
 import { INITIAL_LAYOUTS } from '../constants';
 import Header from './Header';
 import MapLayout from './MapLayout';
 import PlotDetailsPanel from './PlotDetailsPanel';
-import LayoutEditor from './LayoutEditor';
+// Remove the LayoutEditor import since it's not being used:
+// import LayoutEditor from './LayoutEditor';
 import { CheckCircleIcon } from './icons';
+import LayoutDrawingPanel from './LayoutDrawingPanel';
 
 const Toast: React.FC<{ message: string; type: ToastType; onDismiss: () => void; }> = ({ message, type, onDismiss }: { message: string; type: ToastType; onDismiss: () => void; }) => {
   useEffect(() => {
@@ -33,11 +35,16 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
   const [role, setRole] = useState<Role>(Role.Admin);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<Layout | null>(null);
-  const [editingLayout, setEditingLayout] = useState<Layout | null>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [flyToTrigger, setFlyToTrigger] = useState<number>(0);
-  const [svgOverlays, setSvgOverlays] = useState<SvgOverlay[]>([]);
+  const [svgOverlays, setSvgOverlays] = useState<ImageOverlay[]>([]);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 20.5937, lng: 78.9629 });
+  // Add state for fixed overlay:
+  const [fixedOverlay, setFixedOverlay] = useState<{ id: string; imageUrl?: string; svgContent?: string; position: L.LatLngExpression } | null>(null);
+  // Add state for drawing:
+  const [showDrawingPanel, setShowDrawingPanel] = useState(false);
+  const [drawingLayout, setDrawingLayout] = useState<Layout | null>(null);
+  const [layoutCreationImage, setLayoutCreationImage] = useState<string | null>(null);
 
   const showToast = (message: string, type: ToastType = 'success') => {
     setToast({ message, type });
@@ -109,78 +116,150 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
     showToast('New layout created successfully!');
   };
 
-  const handleEnterEditor = () => {
-    if (selectedLayout) {
-      setEditingLayout(selectedLayout);
+  // Handler to add a new SVG overlay
+  const handleAddSvgOverlay = (overlay: ImageOverlay) => {
+    setSvgOverlays((prev: ImageOverlay[]) => [...prev, overlay]);
+  };
+  // Handler to update an existing image overlay (for move/resize/rotate)
+  const handleUpdateSvgOverlay = (updated: ImageOverlay) => {
+    setSvgOverlays((prev: ImageOverlay[]) => prev.map((o: ImageOverlay) => o.id === updated.id ? updated : o));
+  };
+
+  const handleCreateLayout = ({ name, vendorName }: { name: string; vendorName: string }) => {
+    const newId = layouts.length > 0 ? Math.max(...layouts.map(l => l.id)) + 1 : 1;
+    const newLayout = {
+      id: newId,
+      name,
+      vendorName,
+      status: Status.Available,
+      latlngs: [],
+      plots: [],
+    };
+    setLayouts(prev => [...prev, newLayout]);
+  };
+
+  // Add handler to create layout from overlay:
+  const handleCreateLayoutFromOverlay = ({ name, vendorName, overlayId }: { name: string; vendorName: string; overlayId: string }) => {
+    const overlay = svgOverlays.find(o => o.id === overlayId);
+    if (overlay) {
+      const newId = layouts.length > 0 ? Math.max(...layouts.map(l => l.id)) + 1 : 1;
+      
+      // Create a proper polygon boundary around the overlay position
+      const position = overlay.position as { lat: number; lng: number };
+      const offset = 0.001; // Small offset to create a visible polygon
+      const latlngs = [
+        [position.lat - offset, position.lng - offset],
+        [position.lat - offset, position.lng + offset],
+        [position.lat + offset, position.lng + offset],
+        [position.lat + offset, position.lng - offset],
+      ];
+      
+      const newLayout = {
+        id: newId,
+        name,
+        vendorName,
+        status: Status.Available,
+        latlngs: latlngs,
+        plots: [],
+      };
+      setLayouts(prev => [...prev, newLayout]);
+      setFixedOverlay(null); // Clear the fixed overlay
+      showToast('Layout created from overlay successfully!');
     }
   };
 
-  const handleExitEditor = () => {
-    setEditingLayout(null);
-    setSelectedLayout(null);
+  // Add handler for drawing save:
+  const handleDrawingSave = (layoutData: { shapes: Shape[]; drawingPoints: DrawingPoint[] }) => {
+    if (drawingLayout) {
+      // Update the layout with drawing data
+      const updatedLayout = {
+        ...drawingLayout,
+        // Add drawing data to layout (you can extend the Layout interface if needed)
+      };
+      handleLayoutUpdate(updatedLayout);
+      setShowDrawingPanel(false);
+      setDrawingLayout(null);
+      showToast('Layout drawing saved successfully!');
+    }
   };
 
-  const handleSaveChangesFromEditor = (updatedLayout: Layout) => {
-    setLayouts((prevLayouts: Layout[]) => prevLayouts.map((l: Layout) => l.id === updatedLayout.id ? updatedLayout : l));
-    setEditingLayout(null); // Exit editor on save
-    showToast('Layout saved successfully!');
+  // Add handler to open drawing panel:
+  const handleOpenDrawingPanel = (layout: Layout) => {
+    setDrawingLayout(layout);
+    setShowDrawingPanel(true);
+    // Set the drawing image to a placeholder for now
+    // In a real app, you'd get the layout's associated image
+    setLayoutCreationImage('https://via.placeholder.com/400x300/6b7280/ffffff?text=Layout+Image');
   };
-
-  // Handler to add a new SVG overlay
-  const handleAddSvgOverlay = (overlay: SvgOverlay) => {
-    setSvgOverlays((prev: SvgOverlay[]) => [...prev, overlay]);
-  };
-  // Handler to update an existing SVG overlay (for move/resize/rotate)
-  const handleUpdateSvgOverlay = (updated: SvgOverlay) => {
-    setSvgOverlays((prev: SvgOverlay[]) => prev.map((o: SvgOverlay) => o.id === updated.id ? updated : o));
-  };
-
-  if (role === Role.Admin && editingLayout) {
-    return (
-      <LayoutEditor
-        key={editingLayout.id}
-        initialLayout={editingLayout}
-        onSaveChanges={handleSaveChangesFromEditor}
-        onExit={handleExitEditor}
-      />
-    );
-  }
 
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+      
       <div className="flex flex-col h-screen font-sans bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-50">
         <Header role={role} onRoleChange={setRole} onLogout={onLogout} />
-        <main className="flex-grow flex overflow-hidden">
-          <div className="flex-grow relative bg-white dark:bg-slate-900 shadow-lg m-4 rounded-xl">
-            <MapLayout 
-              layouts={layouts} 
-              onLayoutSelect={handleLayoutSelect}
+        
+        <div className="flex-1 flex">
+          {/* Map Area */}
+          <div className="flex-1 relative">
+            <MapLayout
+              layouts={layouts}
+              onLayoutSelect={setSelectedLayout}
               selectedLayoutId={selectedLayout?.id}
-              onDeselect={handleDeselect}
-              onDrawingFinish={handleDrawingFinish}
+              onDeselect={() => setSelectedLayout(null)}
+              onDrawingFinish={(latlngs) => {
+                // Handle drawing finish
+                console.log('Drawing finished:', latlngs);
+              }}
               isAdmin={role === Role.Admin}
               flyToTrigger={flyToTrigger}
               svgOverlays={svgOverlays}
               onUpdateSvgOverlay={handleUpdateSvgOverlay}
-              onMapCenterChange={setMapCenter}
+              onMapCenterChange={(center) => {
+                if (typeof center === 'object' && 'lat' in center && 'lng' in center) {
+                  setMapCenter(center as { lat: number; lng: number });
+                }
+              }}
+              onFixedOverlayChange={setFixedOverlay}
             />
           </div>
-          <aside className="w-96 flex-shrink-0 bg-white dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700/50">
+          
+          {/* Right Panel */}
+          <div className="w-80 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 overflow-y-auto">
             <PlotDetailsPanel
               layout={selectedLayout}
               onUpdate={handleLayoutUpdate}
-              onClose={handleDeselect}
-              role={role}
-              onEnterEditor={handleEnterEditor}
-              layouts={layouts}
-              onLayoutSelect={handleLayoutSelect}
               onDelete={handleLayoutDelete}
+              onClose={() => setSelectedLayout(null)}
+              role={role}
+              layouts={layouts}
+              onLayoutSelect={setSelectedLayout}
               onAddSvgOverlay={handleAddSvgOverlay}
               mapCenter={mapCenter}
+              fixedOverlay={fixedOverlay}
+              onCreateLayoutFromOverlay={handleCreateLayoutFromOverlay}
+              onOpenDrawingPanel={handleOpenDrawingPanel}
             />
-          </aside>
-        </main>
+          </div>
+        </div>
+        
+        {/* Drawing Panel - Overlay */}
+        {showDrawingPanel && drawingLayout && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-11/12 h-5/6 max-w-4xl">
+              <LayoutDrawingPanel
+                backgroundImage={layoutCreationImage || undefined}
+                onSave={handleDrawingSave}
+                onClose={() => {
+                  setShowDrawingPanel(false);
+                  setDrawingLayout(null);
+                  setLayoutCreationImage(null);
+                }}
+                isVisible={showDrawingPanel}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

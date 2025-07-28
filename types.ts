@@ -178,11 +178,57 @@ export interface Layout {
 
 export type ToastType = 'success' | 'error' | 'info';
 
-export interface SvgOverlay {
+export interface ImageOverlay {
   id: string;
-  svgContent: string; // The raw SVG XML string
+  imageUrl?: string; // The image data URL or SVG data URL (optional)
+  svgContent?: string; // The SVG markup as a string (optional)
   position: L.LatLngExpression; // Center position on the map
   scale: number; // Scale factor for resizing
   rotation: number; // Rotation in degrees
-  initialZoom?: number; // The map zoom at which the overlay was fixed
+}
+
+export interface SvgOverlay {
+  id: string;
+  svgContent?: string; // The SVG markup as a string (optional)
+  imageUrl?: string; // The image data URL or SVG data URL (optional)
+  position: L.LatLngExpression; // Center position on the map
+  scale: number; // Scale factor for resizing
+  rotation: number; // Rotation in degrees
+}
+
+export enum DrawingTool {
+  Pencil = 'pencil',
+  Square = 'square',
+  Rectangle = 'rectangle',
+  Eraser = 'eraser',
+  Road = 'road',
+  Tree = 'tree',
+  Select = 'select'
+}
+
+export interface DrawingPoint {
+  x: number;
+  y: number;
+  id: string;
+}
+
+export interface Shape {
+  id: string;
+  type: 'square' | 'rectangle' | 'road' | 'tree';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  color?: string;
+  isSelected: boolean;
+}
+
+export interface LayoutEditorState {
+  isActive: boolean;
+  currentTool: DrawingTool;
+  drawingPoints: DrawingPoint[];
+  shapes: Shape[];
+  backgroundImage?: string;
+  selectedShapeId?: string;
 }
