@@ -1,14 +1,12 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Layout, ImageOverlay } from '../types';
 import { MAP_CENTER, MAP_ZOOM, STATUS_HEX_COLORS } from '../constants';
-import { PencilIcon } from './icons';
 
 interface MapLayoutProps {
   layouts: Layout[];
   onLayoutSelect: (layout: Layout) => void;
   selectedLayoutId?: number | null;
   onDeselect: () => void;
-  onDrawingFinish: (latlngs: L.LatLngExpression[]) => void;
   isAdmin: boolean;
   flyToTrigger: number;
   svgOverlays?: ImageOverlay[];
@@ -22,7 +20,6 @@ const MapLayout: React.FC<MapLayoutProps> = ({
   onLayoutSelect,
   selectedLayoutId,
   onDeselect,
-  onDrawingFinish,
   isAdmin,
   flyToTrigger,
   svgOverlays = [],
@@ -32,11 +29,8 @@ const MapLayout: React.FC<MapLayoutProps> = ({
 }: MapLayoutProps) => {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<L.Map | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingPoints, setDrawingPoints] = useState<L.LatLng[]>([]);
 
   const layoutsLayerGroup = useRef<L.LayerGroup | null>(null);
-  const drawingLayerGroup = useRef<L.LayerGroup | null>(null);
 
   // For SVG overlay dragging, resizing, rotating
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -113,7 +107,6 @@ const MapLayout: React.FC<MapLayoutProps> = ({
     }).addTo(mapInstance);
     
     layoutsLayerGroup.current = L.layerGroup().addTo(mapInstance);
-    drawingLayerGroup.current = L.layerGroup().addTo(mapInstance);
     
     setMap(mapInstance);
 
@@ -142,31 +135,14 @@ const MapLayout: React.FC<MapLayoutProps> = ({
     if (!map) return;
 
     const handleMapClick = (e: L.LeafletMouseEvent) => {
-      if (isDrawing) {
-        setDrawingPoints(prev => [...prev, e.latlng]);
-      } else {
-        onDeselect();
-      }
+      onDeselect();
     };
     map.on('click', handleMapClick);
 
     return () => {
       map.off('click', handleMapClick);
     };
-  }, [map, onDeselect, isDrawing]);
-  
-  // Render temporary drawing visuals
-  useEffect(() => {
-    if (!drawingLayerGroup.current) return;
-    drawingLayerGroup.current.clearLayers();
-
-    if (isDrawing && drawingPoints.length > 0) {
-      drawingPoints.forEach(p => L.circleMarker(p, { radius: 5, color: '#3b82f6', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(drawingLayerGroup.current!));
-      if (drawingPoints.length > 1) {
-        L.polygon(drawingPoints, { color: '#3b82f6', weight: 3, dashArray: '5, 5' }).addTo(drawingLayerGroup.current!);
-      }
-    }
-  }, [drawingPoints, isDrawing]);
+  }, [map, onDeselect]);
 
   // Render final layout polygons and their sub-plots
   useEffect(() => {
@@ -296,19 +272,6 @@ const MapLayout: React.FC<MapLayoutProps> = ({
     }
   };
 
-  const handleDrawClick = () => setIsDrawing(true);
-  const handleCancelClick = () => {
-    setIsDrawing(false);
-    setDrawingPoints([]);
-  }
-  const handleFinishClick = () => {
-    if (drawingPoints.length > 2) {
-      onDrawingFinish(drawingPoints);
-    }
-    setIsDrawing(false);
-    setDrawingPoints([]);
-  };
-
   useEffect(() => {
     if (!map || !onMapCenterChange) return;
     const update = () => {
@@ -331,7 +294,7 @@ const MapLayout: React.FC<MapLayoutProps> = ({
   }, [currentFixedOverlay, onFixedOverlayChange]);
 
   return (
-    <div className={`w-full h-full relative ${isDrawing ? 'cursor-crosshair' : ''}`}>
+    <div className="w-full h-full relative">
       <div ref={mapRef} className="w-full h-full" />
       {/* SVG Overlays */}
       {svgOverlays.map(overlay => {
@@ -442,35 +405,6 @@ const MapLayout: React.FC<MapLayoutProps> = ({
           </div>
         );
       })}
-      {isAdmin && (
-        <div className="absolute top-4 left-4 z-[1000] bg-white dark:bg-slate-800 p-2 rounded-lg shadow-lg flex space-x-2">
-          {!isDrawing ? (
-            <button 
-              onClick={handleDrawClick} 
-              className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors font-semibold"
-            >
-              <PencilIcon className="w-5 h-5"/> 
-              <span>Draw Layout</span>
-            </button>
-          ) : (
-            <>
-              <button 
-                onClick={handleFinishClick}
-                disabled={drawingPoints.length < 3}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors font-semibold disabled:bg-slate-400 disabled:cursor-not-allowed"
-              >
-                Finish Drawing
-              </button>
-               <button 
-                onClick={handleCancelClick}
-                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors font-semibold"
-              >
-                Cancel
-              </button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 };

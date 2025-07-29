@@ -221,10 +221,6 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
               onLayoutSelect={setSelectedLayout}
               selectedLayoutId={selectedLayout?.id}
               onDeselect={() => setSelectedLayout(null)}
-              onDrawingFinish={(latlngs) => {
-                // Handle drawing finish
-                console.log('Drawing finished:', latlngs);
-              }}
               isAdmin={role === Role.Admin}
               flyToTrigger={flyToTrigger}
               svgOverlays={svgOverlays}
