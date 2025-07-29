@@ -4,8 +4,7 @@ import { INITIAL_LAYOUTS } from '../constants';
 import Header from './Header';
 import MapLayout from './MapLayout';
 import PlotDetailsPanel from './PlotDetailsPanel';
-// Remove the LayoutEditor import since it's not being used:
-// import LayoutEditor from './LayoutEditor';
+import DrawingToolsPanel from './DrawingToolsPanel';
 import { CheckCircleIcon } from './icons';
 import LayoutDrawingPanel from './LayoutDrawingPanel';
 
@@ -45,6 +44,8 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
   const [showDrawingPanel, setShowDrawingPanel] = useState(false);
   const [drawingLayout, setDrawingLayout] = useState<Layout | null>(null);
   const [layoutCreationImage, setLayoutCreationImage] = useState<string | null>(null);
+  // Add state for drawing tools panel:
+  const [showDrawingTools, setShowDrawingTools] = useState(false);
 
   const showToast = (message: string, type: ToastType = 'success') => {
     setToast({ message, type });
@@ -198,6 +199,13 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
     setLayoutCreationImage('https://via.placeholder.com/400x300/6b7280/ffffff?text=Layout+Image');
   };
 
+  // Add handler for drawing tools save:
+  const handleDrawingToolsSave = (layoutData: { shapes: Shape[]; drawingPoints: DrawingPoint[] }) => {
+    // Here you can process the drawing data and create layouts or sub-plots
+    console.log('Drawing tools data:', layoutData);
+    showToast('Drawing saved successfully!');
+  };
+
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
@@ -223,6 +231,13 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
               onUpdateSvgOverlay={handleUpdateSvgOverlay}
               onMapCenterChange={handleMapCenterChange}
               onFixedOverlayChange={setFixedOverlay}
+            />
+            
+            {/* Drawing Tools Panel */}
+            <DrawingToolsPanel
+              onSave={handleDrawingToolsSave}
+              isVisible={showDrawingTools}
+              onToggleVisibility={() => setShowDrawingTools(!showDrawingTools)}
             />
           </div>
           
