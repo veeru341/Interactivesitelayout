@@ -50,6 +50,12 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
     setToast({ message, type });
   };
 
+  const handleMapCenterChange = useCallback((center: any) => {
+    if (typeof center === 'object' && 'lat' in center && 'lng' in center) {
+      setMapCenter(center as { lat: number; lng: number });
+    }
+  }, []);
+
   useEffect(() => {
     try {
       const savedLayouts = localStorage.getItem('siteLayouts');
@@ -215,11 +221,7 @@ function PlannerApp({ onLogout }: PlannerAppProps): React.ReactNode {
               flyToTrigger={flyToTrigger}
               svgOverlays={svgOverlays}
               onUpdateSvgOverlay={handleUpdateSvgOverlay}
-              onMapCenterChange={(center) => {
-                if (typeof center === 'object' && 'lat' in center && 'lng' in center) {
-                  setMapCenter(center as { lat: number; lng: number });
-                }
-              }}
+              onMapCenterChange={handleMapCenterChange}
               onFixedOverlayChange={setFixedOverlay}
             />
           </div>
